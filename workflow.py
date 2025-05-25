@@ -16,11 +16,13 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class AgentState(TypedDict):
     messages: List[BaseMessage]
     next_agent: str
     candidates: List[Dict]
     current_job_description: Optional[str]
+
 
 def create_router(llm):
     router_agent = RouterAgent(llm)
@@ -32,6 +34,7 @@ def create_router(llm):
         return state | {"next_agent": next_agent}
     
     return route
+
 
 def create_cv_qa(llm):
     cv_qa = CVQAAgent(llm)
@@ -51,6 +54,7 @@ def create_cv_qa(llm):
         }
     
     return answer
+
 
 def create_matcher(llm):
     matcher = MatchingAgent(llm)
@@ -74,6 +78,7 @@ def create_matcher(llm):
     
     return match
 
+
 def end_conversation(state: AgentState) -> AgentState:
     """End the conversation with a farewell message."""
     logger.info("Ending conversation...")
@@ -81,6 +86,7 @@ def end_conversation(state: AgentState) -> AgentState:
     return state | {
         "messages": messages + [AIMessage(content="Let me know if you need anything else.")]
     }
+
 
 def create_workflow(use_ollama: bool = True, model_id: str = "phi3:mini"):
     # Initialize the model
@@ -96,7 +102,7 @@ def create_workflow(use_ollama: bool = True, model_id: str = "phi3:mini"):
     workflow.add_node("matcher", create_matcher(llm))
     workflow.add_node("end", end_conversation)
     
-    # Add edges from specialized agents back to router
+    # Add edges from specialized agents back to end
     workflow.add_edge("cv_qa", "end")
     workflow.add_edge("matcher", "end")
     
