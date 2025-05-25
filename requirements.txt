@@ -1,0 +1,9 @@
+streamlit==1.32.0
+langchain==0.1.12
+langgraph==0.0.26
+transformers==4.38.2
+pypdf==4.0.2
+python-dotenv==1.0.1
+torch==2.2.1
+accelerate==0.27.2
+langchain-core==0.1.32 
