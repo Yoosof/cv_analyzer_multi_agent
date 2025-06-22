@@ -1,4 +1,5 @@
-from typing import Annotated, Dict, List, TypedDict
+from typing_extensions import TypedDict
+from typing import Dict, List
 from langgraph.graph import Graph, StateGraph
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from typing import Optional
@@ -84,14 +85,15 @@ def end_conversation(state: AgentState) -> AgentState:
     logger.info("Ending conversation...")
     messages = state["messages"]
     return state | {
-        "messages": messages + [AIMessage(content="Let me know if you need anything else.")]
+        "messages": messages + [AIMessage(content="Goodbye! Let me know if you need anything else.")],
+        "next_agent": "end"
     }
 
 
-def create_workflow(use_ollama: bool = True, model_id: str = "phi3:mini"):
+def create_workflow(use_ollama: bool = True, model_id: str = "phi3:mini", backend: str = "ollama", api_key: str = None):
     # Initialize the model
-    llm = init_model(use_ollama=use_ollama, model_id=model_id)
-    logger.info(f"Initializing workflow with model: {model_id}, use_ollama: {use_ollama}")
+    llm = init_model(use_ollama=use_ollama, model_id=model_id, backend=backend, api_key=api_key)
+    logger.info(f"Initializing workflow with model: {model_id}, backend: {backend}, use_ollama: {use_ollama}")
     
     # Create the workflow graph
     workflow = StateGraph(AgentState)
@@ -102,7 +104,7 @@ def create_workflow(use_ollama: bool = True, model_id: str = "phi3:mini"):
     workflow.add_node("matcher", create_matcher(llm))
     workflow.add_node("end", end_conversation)
     
-    # Add edges from specialized agents back to end
+    # Add edges from specialized agents back to router
     workflow.add_edge("cv_qa", "end")
     workflow.add_edge("matcher", "end")
     

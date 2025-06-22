@@ -27,11 +27,15 @@ def initialize_session_state():
         st.session_state.cv_loaded = False
     if "processing" not in st.session_state:
         st.session_state.processing = False
+    if "api_key" not in st.session_state:
+        st.session_state.api_key = ""
+    if "backend" not in st.session_state:
+        st.session_state.backend = "ollama"
 
-def load_cvs(directory_path: str, use_ollama: bool, model_id: str):
+def load_cvs(directory_path: str, backend: str, model_id: str, api_key: str = None):
     logger.info(f"Loading CVs from directory: {directory_path}")
     # Initialize model for CV classification and analysis
-    llm = init_model(use_ollama=use_ollama, model_id=model_id)
+    llm = init_model(model_id=model_id, backend=backend, api_key=api_key)
     classifier = DocumentClassifierAgent(llm)
     cv_analyzer = CVAnalyzerAgent(llm)
     
@@ -95,15 +99,15 @@ def main():
     
     # Model configuration in sidebar
     st.sidebar.header("Model Configuration")
-    use_ollama = st.sidebar.radio(
+    backend = st.sidebar.selectbox(
         "Select Model Backend",
-        options=["Ollama", "HuggingFace"],
+        options=["Ollama", "HuggingFace", "OpenAI"],
         index=0,
-        disabled=not HUGGINGFACE_AVAILABLE,
-        help="Choose whether to use local Ollama or HuggingFace for model inference"
-    ) == "Ollama"
+        help="Choose the backend for model inference"
+    ).lower()
+    st.session_state.backend = backend
 
-    if not HUGGINGFACE_AVAILABLE and not use_ollama:
+    if backend == "huggingface" and not HUGGINGFACE_AVAILABLE:
         st.sidebar.error(
             "HuggingFace backend is not available. "
             "Please install the required packages (transformers, torch, accelerate)."
@@ -112,19 +116,33 @@ def main():
 
     model_id = st.sidebar.text_input(
         "Model ID",
-        value="phi3:mini",
-        help="Model identifier (e.g., 'phi3:mini' for Ollama or 'microsoft/phi-3-mini' for HuggingFace)"
+        value="phi3:mini" if backend == "ollama" else ("microsoft/phi-3-mini" if backend == "huggingface" else "gpt-3.5-turbo"),
+        help="Model identifier (e.g., 'phi3:mini' for Ollama, 'microsoft/phi-3-mini' for HuggingFace, or 'gpt-3.5-turbo' for OpenAI)"
     )
-    
+
+    api_key = None
+    if backend == "openai":
+        api_key = st.sidebar.text_input(
+            "OpenAI API Key",
+            type="password",
+            help="Enter your OpenAI API key"
+        )
+        st.session_state.api_key = api_key
+
     # CV Loading section
     st.sidebar.header("Load CVs")
     directory_path = st.sidebar.text_input("Enter the directory path containing CVs:")
     
     if st.sidebar.button("Load CVs") and directory_path:
         try:
-            st.session_state.workflow = create_workflow(use_ollama, model_id)
+            st.session_state.workflow = create_workflow(
+                use_ollama=(backend == "ollama"),
+                model_id=model_id,
+                backend=backend,
+                api_key=api_key
+            )
             with st.spinner("Loading and analyzing CVs..."):
-                candidates = load_cvs(directory_path, use_ollama, model_id)
+                candidates = load_cvs(directory_path, backend, model_id, api_key)
                 if candidates:
                     st.session_state.candidates = candidates
                     st.session_state.cv_loaded = True

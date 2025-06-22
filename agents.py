@@ -26,18 +26,29 @@ try:
 except ImportError:
     HUGGINGFACE_AVAILABLE = False
 
+try:
+    from langchain_openai import ChatOpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
 
-def init_model(use_ollama: bool = True, model_id: str = "phi3:mini"):
-    """Initialize the language model using either Ollama or HuggingFace.
-    
+def init_model(
+    use_ollama: bool = True,
+    model_id: str = "phi3:mini",
+    backend: str = "ollama",
+    api_key: Optional[str] = None
+):
+    """
+    Initialize the language model using Ollama, HuggingFace, or OpenAI.
     Args:
-        use_ollama: Whether to use Ollama (True) or HuggingFace (False)
+        use_ollama: Deprecated, use backend instead.
         model_id: Model identifier (default: "phi3:mini")
-    
+        backend: 'ollama', 'huggingface', or 'openai'
+        api_key: OpenAI API key (required if backend is 'openai')
     Returns:
         A LangChain compatible language model
     """
-    if use_ollama:
+    if backend == "ollama":
         return Ollama(
             model=model_id,
             temperature=0.1,
@@ -45,13 +56,12 @@ def init_model(use_ollama: bool = True, model_id: str = "phi3:mini"):
             repeat_penalty=1.15,
             num_ctx=2048
         )
-    else:
+    elif backend == "huggingface":
         if not HUGGINGFACE_AVAILABLE:
             raise ImportError(
                 "HuggingFace dependencies not available. "
                 "Please install transformers, torch, and accelerate packages."
             )
-        
         tokenizer = AutoTokenizer.from_pretrained(model_id)
         model = AutoModelForCausalLM.from_pretrained(
             model_id,
@@ -59,7 +69,6 @@ def init_model(use_ollama: bool = True, model_id: str = "phi3:mini"):
             device_map="auto",
             trust_remote_code=True
         )
-        
         pipe = pipeline(
             "text-generation",
             model=model,
@@ -69,8 +78,17 @@ def init_model(use_ollama: bool = True, model_id: str = "phi3:mini"):
             top_p=0.95,
             repetition_penalty=1.15
         )
-        
         return HuggingFacePipeline(pipeline=pipe)
+    elif backend == "openai":
+        if not OPENAI_AVAILABLE:
+            raise ImportError(
+                "langchain_openai is not installed. Please install it with 'pip install langchain-openai'."
+            )
+        if not api_key:
+            raise ValueError("OpenAI API key must be provided for OpenAI backend.")
+        return ChatOpenAI(api_key=api_key, model=model_id)
+    else:
+        raise ValueError(f"Unknown backend: {backend}")
 
 
 class RouterAgent:
@@ -89,7 +107,7 @@ class RouterAgent:
             return "end"
         
         response = self.llm.invoke(self.prompt.format(messages=messages))
-        agent_name = response.strip().lower().split()[0]
+        agent_name = response.content.strip().lower().split()[0] if hasattr(response, "content") else response.strip().lower().split()[0]
         logger.info(f"Router selected agent: {agent_name}")
         
         if agent_name not in ["cv_qa", "matcher", "end"]:
@@ -109,7 +127,8 @@ class DocumentClassifierAgent:
     
     def classify_document(self, content: str) -> str:
         response = self.llm.invoke(self.prompt.format(content=content[:1000]))
-        return response.strip().split(' ')[0].split('\n')[0].strip()
+        result = response.content if hasattr(response, "content") else response
+        return result.strip().split(' ')[0].split('\n')[0].strip()
 
 
 class CVAnalyzerAgent:
@@ -130,7 +149,7 @@ class CVAnalyzerAgent:
             A dictionary containing structured CV information
         """
         response = self.llm.invoke(self.prompt.format(content=content))
-        return response.strip()
+        return response.content.strip() if hasattr(response, "content") else response.strip()
 
 
 class CVQAAgent:
@@ -159,7 +178,7 @@ class CVQAAgent:
                 question=question
             )
         )
-        return response.strip()
+        return response.content.strip() if hasattr(response, "content") else response.strip()
 
 
 class MatchingAgent:
@@ -179,7 +198,7 @@ class MatchingAgent:
                 candidates=candidates
             )
         )
-        return response.strip()
+        return response.content.strip() if hasattr(response, "content") else response.strip()
 
 
 def extract_text_from_pdf(pdf_path: str) -> str:
